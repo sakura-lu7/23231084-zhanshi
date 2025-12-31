@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexusCloud | 量子计算</title>
+    
+    <!-- 1. 核心依赖库 (国内加速 CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- 图标库 -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        /* 字体引入 */
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@300;400;600;800&family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+
+        /* 全局基础设置 */
+        body {
+            font-family: 'Inter', 'Noto Sans SC', sans-serif;
+            background-color: #030014;
+            color: #ffffff;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased; /* 字体抗锯齿，防止模糊 */
+        }
+
+        /* 滚动条美化 */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #030014; }
+        ::-webkit-scrollbar-thumb { background: #4f46e5; border-radius: 3px; }
+
+        /* 高级玻璃拟态 (High-DPI 优化) */
+        .glass-card {
+            background: rgba(20, 20, 30, 0.75); /* 提高不透明度以增强对比 */
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+        .glass-card:hover {
+            border-color: rgba(139, 92, 246, 0.4);
+            transform: translateY(-5px);
+            box-shadow: 0 0 30px rgba(139, 92, 246, 0.25);
+        }
+
+        /* 文字渐变特效 */
+        .text-gradient {
+            background: linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #f472b6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* 视图切换动画 */
+        .view-section { transition: opacity 0.5s ease, transform 0.5s ease; width: 100%; }
+        .hidden-view { display: none !important; opacity: 0; transform: translateY(20px); }
+
+        /* 模态框遮罩 */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 100; opacity: 0; pointer-events: none;
+            transition: opacity 0.3s ease; display: flex; align-items: center; justify-content: center;
+        }
+        .modal-overlay.active { opacity: 1; pointer-events: all; }
+
+        /* 终端光标动画 */
+        .cursor-blink { animation: blink 1s step-end infinite; }
+        @keyframes blink { 50% { opacity: 0; } }
+
+        /* 表格样式 */
+        .tech-table tr { border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.3s; }
+        .tech-table tr:hover { background: rgba(255,255,255,0.02); }
+        .tech-table td { padding: 1rem; }
+        
+        /* 表单输入框 */
+        .auth-input {
+            width: 100%;
+            background: #0a0a0f;
+            border: 1px solid #333;
+            padding: 12px 16px;
+            border-radius: 8px;
+            color: white;
+            outline: none;
+            transition: all 0.3s;
+        }
+        .auth-input:focus {
+            border-color: #6366f1;
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+        }
+
+        /* 背景容器 */
+        #canvas-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }
+    </style>
+</head>
+<body class="antialiased selection:bg-indigo-500 selection:text-white">
+
+    <!-- 3D 粒子背景 -->
+    <div id="canvas-container"></div>
+
+    <!-- ================== 导航栏 (双模式) ================== -->
+    <nav class="fixed w-full z-50 top-0 transition-all duration-300">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center glass-card mt-4 rounded-full mx-4">
+            <!-- Logo -->
+            <div class="flex items-center space-x-3 cursor-pointer" onclick="location.reload()">
+                <div class="w-8 h-8 bg-indigo-600 rounded flex items-center justify-center font-bold text-white shadow-[0_0_15px_rgba(79,70,229,0.5)]">N</div>
+                <span class="text-xl font-bold tracking-wider">Nexus<span class="font-light text-indigo-400">Cloud</span></span>
+            </div>
+            
+            <!-- 游客菜单 -->
+            <div id="nav-guest" class="hidden md:flex items-center space-x-8 text-sm font-medium text-gray-300">
+                <a href="#features" class="hover:text-white transition-colors">核心架构</a>
+                <a href="#specs" class="hover:text-white transition-colors">技术参数</a>
+                <a href="#code" class="hover:text-white transition-colors">开发者</a>
+                <button onclick="authManager.openModal()" class="bg-white text-black px-6 py-2 rounded-full text-sm font-bold hover:bg-gray-200 transition-colors shadow-lg">
+                    控制台登录
+                </button>
+            </div>
+
+            <!-- 用户菜单 (登录后显示) -->
+            <div id="nav-user" class="hidden items-center space-x-6">
+                <div class="flex items-center space-x-2 bg-white/5 px-3 py-1 rounded-full border border-white/10">
+                    <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                    <span class="text-sm text-gray-300 font-mono" id="nav-username">User</span>
+                </div>
+                <button onclick="authManager.logout()" class="text-red-400 hover:text-red-300 text-sm font-medium flex items-center gap-1 transition-colors">
+                    <i data-lucide="log-out" class="w-4 h-4"></i> 退出
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ================== 视图 1: 游客着陆页 (V3 完美复刻) ================== -->
+    <div id="view-landing" class="view-section">
+        <!-- Hero Header -->
+        <section class="min-h-screen flex items-center justify-center relative pt-20">
+            <div class="max-w-6xl mx-auto px-6 text-center z-10">
+                <div class="inline-flex items-center gap-2 mb-6 px-4 py-1.5 rounded-full border border-green-500/30 bg-green-500/10 cursor-pointer hover:bg-green-500/20 transition-colors" onclick="openTerminal('status')">
+                    <span class="relative flex h-2 w-2">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                    </span>
+                    <span class="text-green-400 text-xs font-mono tracking-wide">SYSTEM: ONLINE // QUBITS: 128 STABLE</span>
+                </div>
+
+                <h1 class="text-5xl md:text-8xl font-extrabold mb-8 leading-tight hero-text opacity-0 translate-y-10">
+                    超越硅基极限的<br />
+                    <span class="text-gradient">量子智能云</span>
+                </h1>
+                <p class="text-gray-400 text-lg md:text-xl max-w-2xl mx-auto mb-10 hero-text opacity-0 translate-y-10">
+                    融合 <span class="text-white">生成式 AI</span> 与 <span class="text-white">拓扑量子纠缠</span>。
+                    我们为您提供能够“思考”且“不可攻破”的数字生态系统。
+                </p>
+                
+                <div class="flex flex-col md:flex-row justify-center gap-5 hero-text opacity-0 translate-y-10">
+                    <!-- 引导注册 -->
+                    <button onclick="authManager.openModal('register')" class="group relative px-8 py-4 bg-indigo-600 rounded-lg font-bold text-white overflow-hidden transition-all hover:scale-105 hover:shadow-[0_0_40px_rgba(79,70,229,0.4)]">
+                        <div class="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></div>
+                        <span class="flex items-center gap-2">
+                            <i data-lucide="zap" class="w-5 h-5"></i> 注册体验量子算力
+                        </span>
+                    </button>
+                    <button onclick="document.getElementById('features').scrollIntoView({behavior: 'smooth'})" class="px-8 py-4 glass-card rounded-lg font-bold text-white hover:bg-white/5 transition-all">
+                        探索核心能力
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Bento Grid 核心功能 -->
+        <section id="features" class="py-24 relative z-10">
+            <div class="max-w-7xl mx-auto px-6">
+                <div class="mb-16">
+                    <h2 class="text-3xl md:text-5xl font-bold mb-4">重塑计算边界</h2>
+                    <div class="h-1 w-20 bg-purple-500 rounded-full"></div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- AI -->
+                    <div class="glass-card p-8 rounded-2xl md:col-span-2 relative overflow-hidden group cursor-pointer" onclick="openModal('ai-detail')">
+                        <div class="absolute top-0 right-0 w-64 h-64 bg-purple-600/20 rounded-full filter blur-[80px] group-hover:bg-purple-600/30 transition-all"></div>
+                        <div class="relative z-10">
+                            <div class="w-12 h-12 bg-purple-900/50 rounded-lg flex items-center justify-center mb-6 text-purple-400">
+                                <i data-lucide="brain-circuit" class="w-6 h-6"></i>
+                            </div>
+                            <h3 class="text-2xl font-bold mb-2">Neural Fabric AI 神经网络</h3>
+                            <p class="text-gray-400 mb-6 leading-relaxed">内嵌 GPT-Next 级推理引擎。我们的云平台不仅托管代码，还能自我优化架构。当检测到流量洪峰时，AI 会自动重构底层容器逻辑。</p>
+                            <div class="flex gap-2">
+                                <span class="px-3 py-1 bg-white/5 rounded text-xs text-gray-300 border border-white/10">自动扩容</span>
+                                <span class="px-3 py-1 bg-purple-500/20 rounded text-xs text-purple-300 border border-purple-500/30">详情 ></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 量子 -->
+                    <div class="glass-card p-8 rounded-2xl relative overflow-hidden group cursor-pointer" onclick="openTerminal('deploy')">
+                        <div class="relative z-10">
+                            <div class="w-12 h-12 bg-blue-900/50 rounded-lg flex items-center justify-center mb-6 text-blue-400">
+                                <i data-lucide="cpu" class="w-6 h-6"></i>
+                            </div>
+                            <h3 class="text-xl font-bold mb-2">Q-Bridge 量子桥</h3>
+                            <p class="text-gray-400 text-sm">通过 API 访问 128 量子比特处理单元，瞬间解决传统超算需数年完成的模拟问题。</p>
+                            <div class="mt-4 text-blue-400 text-xs font-mono group-hover:underline">启动模拟器 ></div>
+                        </div>
+                    </div>
+
+                    <!-- 安全 -->
+                    <div class="glass-card p-8 rounded-2xl relative overflow-hidden group cursor-pointer" onclick="openTerminal('encrypt')">
+                        <div class="relative z-10">
+                            <div class="w-12 h-12 bg-emerald-900/50 rounded-lg flex items-center justify-center mb-6 text-emerald-400">
+                                <i data-lucide="shield-check" class="w-6 h-6"></i>
+                            </div>
+                            <h3 class="text-xl font-bold mb-2">零信任卫士</h3>
+                            <p class="text-gray-400 text-sm">基于生物特征与行为分析的实时防御系统。数据在传输、存储、处理全链路量子加密。</p>
+                            <div class="mt-4 text-emerald-400 text-xs font-mono group-hover:underline">防御日志 ></div>
+                        </div>
+                    </div>
+                    
+                    <!-- 边缘计算 -->
+                    <div class="glass-card p-8 rounded-2xl md:col-span-2 relative overflow-hidden group">
+                         <div class="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5"></div>
+                        <div class="relative z-10 flex flex-col md:flex-row items-center gap-8">
+                            <div class="flex-1">
+                                <h3 class="text-2xl font-bold mb-2">全息边缘计算</h3>
+                                <p class="text-gray-400 mb-4">将算力推向网络边缘。支持 VR/AR 实时渲染。低至 1ms 的超低延迟，让云端像本地硬盘一样快。</p>
+                                <div class="flex items-center gap-4 text-sm font-mono text-gray-500">
+                                    <div><span class="text-white font-bold">500+</span> 边缘节点</div>
+                                    <div><span class="text-white font-bold">1ms</span> 延迟</div>
+                                </div>
+                            </div>
+                            <div class="w-full md:w-1/3 h-32 bg-gradient-to-r from-gray-900 to-gray-800 rounded-lg border border-gray-700 flex items-center justify-center font-mono text-xs text-green-400 p-4 shadow-inner">
+                                > Edge_Node_01: Connected<br>
+                                > Latency: 1.2ms<br>
+                                > Status: Optimal
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 规格对比表 -->
+        <section id="specs" class="py-20 bg-black/20">
+            <div class="max-w-5xl mx-auto px-6">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold mb-2">降维打击</h2>
+                    <p class="text-gray-400">传统云架构 vs Nexus 量子架构</p>
+                </div>
+                <div class="glass-card rounded-xl overflow-hidden">
+                    <table class="w-full text-left border-collapse tech-table">
+                        <thead>
+                            <tr class="bg-white/5 text-gray-300 text-sm uppercase tracking-wider">
+                                <th class="p-6 font-semibold">核心指标</th>
+                                <th class="p-6 font-semibold text-gray-500">传统云厂商 (AWS/Azure)</th>
+                                <th class="p-6 font-bold text-indigo-400">Nexus Cloud</th>
+                            </tr>
+                        </thead>
+                        <tbody class="text-sm text-gray-300">
+                            <tr>
+                                <td class="font-medium text-white">加密方式</td>
+                                <td>RSA-2048 (可被暴力破解)</td>
+                                <td class="text-green-400">QKD 量子密钥分发</td>
+                            </tr>
+                            <tr>
+                                <td class="font-medium text-white">并行处理能力</td>
+                                <td>线性串行 (Linear)</td>
+                                <td class="text-purple-400">量子叠加态 (Superposition) 2^N</td>
+                            </tr>
+                            <tr>
+                                <td class="font-medium text-white">AI 训练速度</td>
+                                <td>数周 (Weeks)</td>
+                                <td class="text-white">数分钟 (Minutes) <span class="text-xs bg-indigo-600 px-1 rounded ml-2">100x</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 代码演示区 -->
+        <section id="code" class="py-24 relative">
+            <div class="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center gap-12">
+                <div class="md:w-1/2">
+                    <h2 class="text-3xl font-bold mb-6">像写诗一样<br /><span class="text-gradient">编排基础设施</span></h2>
+                    <p class="text-gray-400 mb-8 leading-relaxed">
+                        告别繁琐的 YAML 配置。使用我们革命性的 Nexus SDK，直接在代码中定义量子电路。
+                        支持 Python, Rust, 和 JavaScript。
+                    </p>
+                    <div class="flex items-center space-x-8">
+                        <div>
+                            <div class="text-3xl font-bold text-white">SDK</div>
+                            <div class="text-sm text-gray-500">全平台支持</div>
+                        </div>
+                        <div>
+                            <div class="text-3xl font-bold text-white">API</div>
+                            <div class="text-sm text-gray-500">REST / GraphQL</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="md:w-1/2 w-full">
+                    <div class="glass-card rounded-xl overflow-hidden border border-gray-800 shadow-2xl">
+                        <div class="bg-[#1e1e1e] px-4 py-3 flex items-center justify-between border-b border-gray-700">
+                            <div class="flex items-center gap-2">
+                                <div class="w-3 h-3 rounded-full bg-red-500"></div><div class="w-3 h-3 rounded-full bg-yellow-500"></div><div class="w-3 h-3 rounded-full bg-green-500"></div>
+                            </div>
+                            <div class="text-xs text-gray-500 font-mono">deploy.js — VS Code</div>
+                        </div>
+                        <div class="p-6 bg-[#0d1117] font-mono text-sm overflow-hidden leading-relaxed">
+                            <div class="text-gray-500">// 初始化量子-AI 混合管道</div>
+                            <div class="text-pink-400">import</div> <div class="text-white inline">NexusQuantum</div> <div class="text-pink-400 inline">as</div> <div class="text-white inline">nq</div>
+                            <br><br>
+                            <div class="text-purple-400">async function</div> <div class="text-blue-400 inline">deploySuperIntelligence</div>() {
+                            <br>
+                            &nbsp;&nbsp;<div class="text-gray-500 inline">// 分配 50 个逻辑量子比特</div>
+                            <br>
+                            &nbsp;&nbsp;<div class="text-white inline">const qpu = </div><div class="text-yellow-300 inline">await</div> nq.allocate({ <div class="text-green-400 inline">qubits: 50</div> });
+                            <br><br>
+                            &nbsp;&nbsp;<div class="text-white inline">await qpu.optimize(</div><div class="text-green-400 inline">"Transformer-XL"</div><div class="text-white inline">);</div>
+                            <br><br>
+                            &nbsp;&nbsp;<div class="text-white inline">console.log(</div><div class="text-green-400 inline">"系统已上线"</div><div class="text-white inline">);</div>
+                            <br>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="border-t border-white/10 bg-[#02000f] pt-16 pb-8">
+            <div class="max-w-7xl mx-auto px-6">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
+                    <div class="col-span-1 md:col-span-1">
+                        <div class="flex items-center space-x-2 mb-4">
+                            <div class="w-6 h-6 bg-indigo-600 rounded flex items-center justify-center font-bold text-xs">N</div>
+                            <span class="text-lg font-bold text-white">NexusCloud</span>
+                        </div>
+                        <p class="text-gray-500 text-sm leading-6">致力于构建人类下一代计算基础设施。</p>
+                    </div>
+                    <div>
+                        <h4 class="text-white font-bold mb-4">产品生态</h4>
+                        <ul class="space-y-2 text-sm text-gray-500">
+                            <li>Quantum Compute (QC2)</li>
+                            <li>Neural AI Engine</li>
+                            <li>Edge Storage S4</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 class="text-white font-bold mb-4">开发者</h4>
+                        <ul class="space-y-2 text-sm text-gray-500">
+                            <li>API 文档</li>
+                            <li>SDK 下载</li>
+                            <li>社区论坛</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 class="text-white font-bold mb-4">联系</h4>
+                        <ul class="space-y-2 text-sm text-gray-500">
+                            <li>sales@nexus.cloud</li>
+                            <li>+1 (800) QUBIT-01</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="text-center text-gray-600 text-xs border-t border-white/5 pt-8 font-mono">
+                    &copy; 2025 NexusCloud Inc. Quantum Entanglement Protocol Active.
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- ================== 视图 2: 控制台 (登录后显示) ================== -->
+    <div id="view-dashboard" class="view-section hidden-view min-h-screen pt-24 pb-10">
+        <div class="max-w-7xl mx-auto px-6">
+            <!-- 欢迎栏 -->
+            <div class="flex justify-between items-end mb-8 border-b border-white/10 pb-6">
+                <div>
+                    <h2 class="text-3xl font-bold mb-2">控制台概览</h2>
+                    <p class="text-gray-400">欢迎回来, <span id="dash-welcome-name" class="text-white font-bold">User</span>. 节点运行正常。</p>
+                </div>
+                <div class="text-right">
+                    <div class="text-2xl font-mono text-indigo-400 font-bold" id="dash-clock">00:00:00</div>
+                    <div class="text-xs text-gray-500">UTC+8 系统时间</div>
+                </div>
+            </div>
+
+            <!-- 资源监控 -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div class="glass-card p-6 rounded-xl">
+                    <div class="text-gray-400 text-sm mb-2 flex items-center gap-2"><i data-lucide="cpu" class="w-4 h-4"></i> 量子比特占用</div>
+                    <div class="text-3xl font-bold text-white">32 <span class="text-sm text-gray-500 font-normal">/ 128 Q</span></div>
+                    <div class="w-full bg-gray-700 h-1 mt-4 rounded-full overflow-hidden"><div class="bg-indigo-500 h-full w-1/4"></div></div>
+                </div>
+                <div class="glass-card p-6 rounded-xl">
+                    <div class="text-gray-400 text-sm mb-2 flex items-center gap-2"><i data-lucide="activity" class="w-4 h-4"></i> 实时算力</div>
+                    <div class="text-3xl font-bold text-green-400">420 <span class="text-sm text-gray-500 font-normal">PFLOPS</span></div>
+                </div>
+                <div class="glass-card p-6 rounded-xl">
+                    <div class="text-gray-400 text-sm mb-2 flex items-center gap-2"><i data-lucide="database" class="w-4 h-4"></i> 存储桶 (S4)</div>
+                    <div class="text-3xl font-bold text-purple-400">12.5 <span class="text-sm text-gray-500 font-normal">TB</span></div>
+                </div>
+                <div class="glass-card p-6 rounded-xl">
+                    <div class="text-gray-400 text-sm mb-2 flex items-center gap-2"><i data-lucide="credit-card" class="w-4 h-4"></i> 账户余额</div>
+                    <div class="text-3xl font-bold text-white">$9,240</div>
+                </div>
+            </div>
+
+            <!-- 主功能区：实例列表与操作 -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <!-- 实例表格 -->
+                <div class="md:col-span-2 glass-card rounded-xl p-6">
+                    <h3 class="font-bold mb-4 flex items-center gap-2"><i data-lucide="server" class="w-4 h-4"></i> 活跃实例</h3>
+                    <table class="w-full text-left text-sm">
+                        <thead class="text-gray-500 border-b border-gray-700">
+                            <tr><th class="pb-2">名称</th><th class="pb-2">类型</th><th class="pb-2">状态</th><th class="pb-2">操作</th></tr>
+                        </thead>
+                        <tbody class="text-gray-300" id="instance-list-body">
+                            <!-- JS 自动生成内容 -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 快速操作 -->
+                <div class="glass-card rounded-xl p-6">
+                    <h3 class="font-bold mb-4 flex items-center gap-2"><i data-lucide="zap" class="w-4 h-4"></i> 快速部署</h3>
+                    <div class="space-y-3">
+                        <!-- 新增实例按钮 -->
+                        <button onclick="instanceManager.openDeployModal()" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2 shadow-lg">
+                            <i data-lucide="plus" class="w-4 h-4"></i> 新建量子实例
+                        </button>
+                        <button onclick="openTerminal('encrypt')" class="w-full py-3 bg-white/5 hover:bg-white/10 text-white rounded-lg font-bold text-sm transition-colors border border-white/10">
+                            生成 QKD 密钥
+                        </button>
+                        <button onclick="openTerminal('status')" class="w-full py-3 bg-white/5 hover:bg-white/10 text-white rounded-lg font-bold text-sm transition-colors border border-white/10">
+                            系统健康诊断
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================== 模态框组件 ================== -->
+
+    <!-- 1. 登录/注册 -->
+    <div id="auth-modal" class="modal-overlay">
+        <div class="glass-card p-8 rounded-2xl w-full max-w-sm relative scale-95 opacity-0 transition-all duration-300 transform bg-[#0a0a0f]" id="auth-box">
+            <button onclick="authManager.closeModal()" class="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
+            <div class="text-center mb-8">
+                <div class="w-12 h-12 bg-indigo-600 rounded mx-auto flex items-center justify-center font-bold mb-4 shadow-lg">N</div>
+                <h2 class="text-2xl font-bold" id="auth-title">登录控制台</h2>
+                <p class="text-gray-400 text-sm mt-2" id="auth-subtitle">访问您的量子资源</p>
+            </div>
+            <div id="auth-error" class="hidden mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded text-red-300 text-sm text-center"></div>
+            <form id="auth-form" onsubmit="authManager.handleSubmit(event)">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs text-gray-500 uppercase font-bold mb-1 ml-1">用户名</label>
+                        <input type="text" id="username" class="auth-input" placeholder="例如: quantum_user" required autocomplete="off">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 uppercase font-bold mb-1 ml-1">密码</label>
+                        <input type="password" id="password" class="auth-input" placeholder="••••••••" required>
+                    </div>
+                    <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg hover:shadow-lg transition-all">
+                        <span id="auth-btn-text">立即登录</span>
+                    </button>
+                </div>
+            </form>
+            <div class="mt-6 text-center text-sm text-gray-500">
+                <span id="auth-footer-text">还没有账号？</span>
+                <button onclick="authManager.toggleMode()" class="text-indigo-400 hover:text-indigo-300 font-bold ml-1 transition-colors" id="auth-toggle-btn">注册新账号</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. 新建实例配置 -->
+    <div id="deploy-modal" class="modal-overlay">
+        <div class="glass-card p-8 rounded-2xl w-full max-w-sm relative scale-95 opacity-0 transition-all duration-300 transform bg-[#0a0a0f]" id="deploy-box">
+            <button onclick="instanceManager.closeDeployModal()" class="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
+            <div class="mb-6">
+                <h2 class="text-xl font-bold text-white flex items-center gap-2"><i data-lucide="cpu" class="w-5 h-5 text-indigo-500"></i> 配置量子实例</h2>
+                <p class="text-gray-400 text-xs mt-1">选择您的计算资源配置</p>
+            </div>
+            <form onsubmit="instanceManager.handleDeploy(event)">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs text-gray-500 uppercase font-bold mb-1 ml-1">实例名称</label>
+                        <input type="text" id="inst-name" class="auth-input" placeholder="例如: My-Quantum-Node" required autocomplete="off">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 uppercase font-bold mb-1 ml-1">类型</label>
+                        <select id="inst-type" class="auth-input bg-[#0a0a0f]"><option value="128-Qubit (Std)">128-Qubit (标准版)</option><option value="256-Qubit (Pro)">256-Qubit (专业版)</option></select>
+                    </div>
+                    <button type="submit" class="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-lg hover:shadow-lg transition-all mt-2">立即启动</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 3. 终端模拟器 -->
+    <div id="terminal-modal" class="modal-overlay">
+        <div class="w-full max-w-3xl mx-4 bg-[#0c0c0c] rounded-lg border border-gray-800 shadow-2xl overflow-hidden font-mono text-sm relative">
+             <button onclick="closeModal('terminal-modal')" class="absolute top-2 right-4 text-gray-500 hover:text-white z-10">✕</button>
+            <div class="bg-[#1f1f1f] px-4 py-2 flex items-center gap-2 border-b border-gray-700">
+                <div class="w-3 h-3 rounded-full bg-red-500"></div><div class="w-3 h-3 rounded-full bg-yellow-500"></div><div class="w-3 h-3 rounded-full bg-green-500"></div>
+                <div class="ml-2 text-gray-400 text-xs">root@nexus-core:~</div>
+            </div>
+            <div class="p-6 h-64 overflow-y-auto text-green-400" id="terminal-body"></div>
+        </div>
+    </div>
+
+    <!-- 4. AI 详情 -->
+    <div id="ai-detail" class="modal-overlay">
+        <div class="glass-card p-10 rounded-2xl max-w-2xl relative bg-[#050510]">
+             <button onclick="closeModal('ai-detail')" class="absolute top-4 right-4 text-gray-400 hover:text-white">✕</button>
+            <h2 class="text-2xl font-bold mb-4 text-purple-400">Neural Fabric</h2>
+            <p class="text-gray-300 mb-6">Neural Fabric 是 NexusCloud 独有的神经编织层，实时分析代码逻辑并自动优化。</p>
+            <div class="bg-black/50 p-4 rounded font-mono text-xs text-gray-400 border border-gray-800">
+                > Analyzing Cluster Health... <span class="text-green-400">OK</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================== JavaScript 核心逻辑 ================== -->
+    <script>
+        lucide.createIcons();
+
+        // 1. 认证管理器
+        const authManager = {
+            isLoginMode: true,
+            openModal: (mode = 'login') => {
+                const modal = document.getElementById('auth-modal');
+                const box = document.getElementById('auth-box');
+                modal.classList.add('active');
+                setTimeout(() => { box.style.transform = 'scale(1)'; box.style.opacity = '1'; }, 10);
+                authManager.isLoginMode = (mode === 'login');
+                authManager.updateUI();
+            },
+            closeModal: () => {
+                const modal = document.getElementById('auth-modal');
+                const box = document.getElementById('auth-box');
+                box.style.transform = 'scale(0.95)'; box.style.opacity = '0';
+                setTimeout(() => { modal.classList.remove('active'); document.getElementById('auth-error').classList.add('hidden'); document.getElementById('auth-form').reset(); }, 300);
+            },
+            toggleMode: () => { authManager.isLoginMode = !authManager.isLoginMode; authManager.updateUI(); },
+            updateUI: () => {
+                const els = { title: document.getElementById('auth-title'), subtitle: document.getElementById('auth-subtitle'), btn: document.getElementById('auth-btn-text'), footer: document.getElementById('auth-footer-text'), toggle: document.getElementById('auth-toggle-btn') };
+                if(authManager.isLoginMode) {
+                    els.title.innerText = "登录控制台"; els.subtitle.innerText = "访问您的量子资源"; els.btn.innerText = "立即登录"; els.footer.innerText = "还没有账号？"; els.toggle.innerText = "注册新账号";
+                } else {
+                    els.title.innerText = "创建新账户"; els.subtitle.innerText = "注册即可获得 128 Qubits"; els.btn.innerText = "确认注册"; els.footer.innerText = "已有账号？"; els.toggle.innerText = "直接登录";
+                }
+                document.getElementById('auth-error').classList.add('hidden');
+            },
+            handleSubmit: (e) => {
+                e.preventDefault();
+                const u = document.getElementById('username').value;
+                const p = document.getElementById('password').value;
+                const users = JSON.parse(localStorage.getItem('nexus_users') || '[]');
+                if(authManager.isLoginMode) {
+                    const user = users.find(x => x.username === u && x.password === p);
+                    if(user) authManager.loginSuccess(user);
+                    else authManager.showError("用户名或密码错误");
+                } else {
+                    if(users.find(x => x.username === u)) return authManager.showError("用户名已被占用");
+                    if(u.length < 3) return authManager.showError("用户名太短");
+                    const newUser = { username: u, password: p, regTime: new Date().toISOString() };
+                    users.push(newUser);
+                    localStorage.setItem('nexus_users', JSON.stringify(users));
+                    alert("注册成功！自动登录...");
+                    authManager.loginSuccess(newUser);
+                }
+            },
+            showError: (msg) => { const el = document.getElementById('auth-error'); el.innerText = msg; el.classList.remove('hidden'); },
+            loginSuccess: (user) => { sessionStorage.setItem('nexus_current_user', user.username); authManager.closeModal(); viewManager.switchToUser(user.username); },
+            logout: () => { sessionStorage.removeItem('nexus_current_user'); viewManager.switchToGuest(); },
+            checkSession: () => { const u = sessionStorage.getItem('nexus_current_user'); if(u) viewManager.switchToUser(u); }
+        };
+
+        // 2. 视图管理器
+        const viewManager = {
+            switchToUser: (username) => {
+                document.getElementById('nav-guest').classList.remove('md:flex'); document.getElementById('nav-guest').classList.add('hidden');
+                document.getElementById('nav-user').classList.remove('hidden'); document.getElementById('nav-user').classList.add('flex');
+                document.getElementById('nav-username').innerText = username; document.getElementById('dash-welcome-name').innerText = username;
+                const landing = document.getElementById('view-landing'); const dash = document.getElementById('view-dashboard');
+                landing.style.opacity = '0';
+                setTimeout(() => { landing.classList.add('hidden-view'); dash.classList.remove('hidden-view'); requestAnimationFrame(() => { dash.style.opacity = '1'; dash.style.transform = 'translateY(0)'; }); }, 500);
+                setInterval(() => { document.getElementById('dash-clock').innerText = new Date().toLocaleTimeString('en-GB'); }, 1000);
+            },
+            switchToGuest: () => { location.reload(); }
+        };
+
+        // 3. 实例管理器 (核心作业需求)
+        const instanceManager = {
+            instances: [
+                { name: "prod-quantum-01", type: "128-Qubit (Std)", status: "运行中", statusClass: "bg-green-500/20 text-green-400" },
+                { name: "dev-ai-cluster", type: "H100-AI-Mesh", status: "休眠", statusClass: "bg-yellow-500/20 text-yellow-400" }
+            ],
+            render: () => {
+                const tbody = document.getElementById('instance-list-body'); tbody.innerHTML = '';
+                instanceManager.instances.forEach((inst, index) => {
+                    const row = document.createElement('tr'); row.className = "border-b border-gray-800 hover:bg-white/5 transition-colors";
+                    row.innerHTML = `<td class="py-3 font-mono text-indigo-300">${inst.name}</td><td class="py-3 text-gray-400">${inst.type}</td><td class="py-3"><span class="px-2 py-1 ${inst.statusClass} rounded text-xs">${inst.status}</span></td><td class="py-3"><button class="text-indigo-400 hover:text-white text-xs underline" onclick="alert('Manage ${inst.name}')">管理</button><button class="text-red-400 hover:text-white text-xs ml-2" onclick="instanceManager.delete(${index})">删除</button></td>`;
+                    tbody.appendChild(row);
+                });
+            },
+            delete: (index) => { if(confirm("确定销毁实例？")) { instanceManager.instances.splice(index, 1); instanceManager.render(); }},
+            openDeployModal: () => {
+                const modal = document.getElementById('deploy-modal'); const box = document.getElementById('deploy-box');
+                modal.classList.add('active'); setTimeout(() => { box.style.transform = 'scale(1)'; box.style.opacity = '1'; }, 10);
+            },
+            closeDeployModal: () => {
+                const modal = document.getElementById('deploy-modal'); const box = document.getElementById('deploy-box');
+                box.style.transform = 'scale(0.95)'; box.style.opacity = '0'; setTimeout(() => { modal.classList.remove('active'); document.getElementById('inst-name').value = ''; }, 300);
+            },
+            handleDeploy: async (e) => {
+                e.preventDefault();
+                const name = document.getElementById('inst-name').value; const type = document.getElementById('inst-type').value;
+                instanceManager.closeDeployModal();
+                const modal = document.getElementById('terminal-modal'); const body = document.getElementById('terminal-body');
+                modal.classList.add('active'); body.innerHTML = '';
+                const steps = [`Requesting resources for '${name}'...`, `Allocating ${type.split(' ')[0]} QPU cores...`, `Verifying Entanglement... OK`, `Booting NexusOS...`, `Instance ACTIVE.`];
+                for(let line of steps) { body.innerHTML += `<div><span class="text-gray-500">[${new Date().toLocaleTimeString()}]</span> ${line}</div>`; body.scrollTop = body.scrollHeight; await new Promise(r => setTimeout(r, 600)); }
+                setTimeout(() => {
+                    closeModal('terminal-modal');
+                    instanceManager.instances.push({ name: name, type: type, status: "初始化", statusClass: "bg-blue-500/20 text-blue-400 animate-pulse" });
+                    instanceManager.render();
+                    setTimeout(() => { const t = instanceManager.instances.find(i=>i.name===name); if(t){t.status="运行中";t.statusClass="bg-green-500/20 text-green-400";instanceManager.render();} }, 3000);
+                }, 1500);
+            }
+        };
+
+        // 4. 通用逻辑
+        function openModal(id) { document.getElementById(id).classList.add('active'); }
+        function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+        async function openTerminal(type) {
+            const modal = document.getElementById('terminal-modal'); const body = document.getElementById('terminal-body');
+            modal.classList.add('active'); body.innerHTML = '';
+            const msgs = { 'deploy': ["Allocating...", "Ready."], 'status': ["Checking...", "All Green."], 'encrypt': ["Encrypting...", "Secure."] };
+            for(let line of (msgs[type] || ["Ready."])) { body.innerHTML += `<div><span class="text-gray-500">[Time]</span> ${line}</div>`; await new Promise(r=>setTimeout(r,400)); }
+            body.innerHTML += `<div class="mt-2 text-purple-400">root@nexus:~$ <span class="cursor-blink">_</span></div>`;
+        }
+        document.querySelectorAll('.modal-overlay').forEach(el => el.addEventListener('click', e => { if(e.target===el && el.id !== 'terminal-modal') { if(el.id==='auth-modal')authManager.closeModal(); else if(el.id==='deploy-modal')instanceManager.closeDeployModal(); else closeModal(el.id); } }));
+
+        // 5. 初始化
+        window.onload = () => {
+            authManager.checkSession();
+            instanceManager.render();
+            // GSAP
+            gsap.registerPlugin(ScrollTrigger);
+            gsap.to(".hero-text", { y: 0, opacity: 1, duration: 1, stagger: 0.2, ease: "power3.out" });
+            gsap.utils.toArray('.glass-card').forEach(card => {
+                gsap.from(card, { scrollTrigger: { trigger: card, start: "top 85%" }, y: 30, opacity: 0, duration: 0.6, ease: "power2.out" });
+            });
+            // Three.js
+            const container = document.getElementById('canvas-container');
+            const scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x030014, 0.002);
+            const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+            camera.position.z = 25;
+            const renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+            const geo = new THREE.BufferGeometry();
+            const pos = new Float32Array(1500*3);
+            for(let i=0;i<1500*3;i++) pos[i]=(Math.random()-0.5)*80;
+            geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+            const mat = new THREE.PointsMaterial({size:0.15,color:0x6366f1,transparent:true,opacity:0.8});
+            const mesh = new THREE.Points(geo,mat);
+            scene.add(mesh);
+            function animate(){ requestAnimationFrame(animate); mesh.rotation.y+=0.0005; renderer.render(scene,camera); }
+            animate();
+            window.addEventListener('resize', () => { camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+        };
+    </script>
+</body>
+</html>
